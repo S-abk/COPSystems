@@ -1,52 +1,53 @@
-#include <iostream>
-#include <sstream>
-#include <vector>
-#include <string>
-#include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <iostream>
+#include <vector>
+#include <cstring>
 
-std::vector<std::vector<std::string>> parseCommand(const std::string& commandLine) {
-    std::vector<std::vector<std::string>> commands;
-    std::istringstream stream(commandLine);
-    std::string segment;
-    std::vector<std::string> currentCommand;
+// Function to tokenize the command line into commands and their arguments
+std::vector<std::vector<char*>> parseCommand(char* commandLine) {
+    std::vector<std::vector<char*>> commands;
+    char* command = strtok(commandLine, "|"); // Tokenize by pipe character
 
-    while (std::getline(stream, segment, '|')) {
-        std::istringstream cmdStream(segment);
-        std::string arg;
-        currentCommand.clear();
-        while (cmdStream >> arg) {
-            currentCommand.push_back(arg);
+    while (command != nullptr) {
+        std::vector<char*> args;
+        char* arg = strtok(command, " \n"); // Tokenize the command into arguments by spaces
+        while (arg != nullptr) {
+            args.push_back(arg);
+            arg = strtok(nullptr, " \n");
         }
-        commands.push_back(currentCommand);
+        if (!args.empty()) {
+            args.push_back(nullptr); // execvp expects a NULL terminated array
+            commands.push_back(args);
+        }
+        command = strtok(nullptr, "|");
     }
+
     return commands;
 }
 
-void execCommand(const std::vector<std::string>& command) {
-    std::vector<char*> args;
-    for (const auto& arg : command) {
-        args.push_back(const_cast<char*>(arg.c_str()));
-    }
-    args.push_back(nullptr);
-
+// Function to execute each command in its own process
+void executeCommand(std::vector<char*>& args) {
     execvp(args[0], args.data());
-    perror("execvp"); // Only reached if execvp fails
+    // If execvp returns, there was an error
+    perror("execvp failed");
     exit(EXIT_FAILURE);
 }
 
 int main() {
-    std::string commandLine;
+    std::string input;
     std::cout << "Enter pipe command:\n";
-    std::getline(std::cin, commandLine);
+    std::getline(std::cin, input);
 
-    auto commands = parseCommand(commandLine);
-    std::vector<int> pfd(2 * (commands.size() - 1)); // Pipe file descriptors
+    // Convert std::string to C-style string for strtok
+    std::vector<char> cstr(input.c_str(), input.c_str() + input.size() + 1);
+    
+    auto commands = parseCommand(cstr.data());
 
-    // Set up pipes
+    std::vector<int> fds(2 * (commands.size() - 1)); // Pipe file descriptors
+
     for (size_t i = 0; i < commands.size() - 1; ++i) {
-        if (pipe(pfd.data() + i*2) == -1) {
+        if (pipe(fds.data() + i*2) != 0) {
             perror("pipe");
             exit(EXIT_FAILURE);
         }
@@ -59,27 +60,27 @@ int main() {
             exit(EXIT_FAILURE);
         } else if (pid == 0) { // Child process
             if (i > 0) {
-                dup2(pfd[(i-1)*2], STDIN_FILENO);
+                dup2(fds[(i-1)*2], STDIN_FILENO); // Redirect input
             }
             if (i < commands.size() - 1) {
-                dup2(pfd[i*2+1], STDOUT_FILENO);
+                dup2(fds[i*2+1], STDOUT_FILENO); // Redirect output
             }
 
-            // Close all pipe fds in the child
-            for (auto& fd : pfd) {
-                close(fd);
+            // Close all fds in the child
+            for (size_t j = 0; j < fds.size(); ++j) {
+                close(fds[j]);
             }
 
-            execCommand(commands[i]);
+            executeCommand(commands[i]);
         }
     }
 
-    // Close all pipe fds in the parent
-    for (auto& fd : pfd) {
-        close(fd);
+    // Close all fds in the parent
+    for (size_t i = 0; i < fds.size(); ++i) {
+        close(fds[i]);
     }
 
-    // Wait for all child processes
+    // Wait for all children to exit
     int status = 0;
     while (wait(&status) > 0) {
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
