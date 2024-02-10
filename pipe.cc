@@ -3,62 +3,49 @@
 #include <iostream>
 
 int main() {
-    int pipefd[2];
-    pid_t cpid1, cpid2;
+    int pipe_fds[2]; /* Pipe file descriptors */
+    pid_t child1_pid, child2_pid; /* Process IDs for child processes */
 
-    // Create a pipe
-    if (pipe(pipefd) == -1) {
-        perror("pipe");
+    if (pipe(pipe_fds) == -1) { /* Initialize pipe */
+        perror("pipe error");
         exit(EXIT_FAILURE);
     }
 
-    // Create first child process
-    cpid1 = fork();
-    if (cpid1 == -1) {
-        perror("fork");
+    child1_pid = fork(); /* Fork first child process */
+    if (child1_pid == -1) {
+        perror("fork error");
         exit(EXIT_FAILURE);
     }
 
-    if (cpid1 == 0) { // Child 1
-        // Redirect stdout to the write end of the pipe
-        dup2(pipefd[1], STDOUT_FILENO);
-        close(pipefd[0]); // Close the read end, not needed here
-        close(pipefd[1]); // Close original write end after dup
-
-        // Execute "ps -aux"
-        execlp("ps", "ps", "-aux", NULL);
-        // If execlp returns, it must have failed
-        perror("execlp");
+    if (child1_pid == 0) { /* In first child process */
+        dup2(pipe_fds[1], STDOUT_FILENO); /* Redirect standard output to pipe's write end */
+        close(pipe_fds[0]); /* Close pipe's read end */
+        close(pipe_fds[1]); /* Close write end after duplication */
+        execlp("ps", "ps", "-aux", NULL); /* Execute 'ps -aux' command */
+        perror("execlp error with ps");
         exit(EXIT_FAILURE);
     } else {
-        // Create second child process
-        cpid2 = fork();
-        if (cpid2 == -1) {
-            perror("fork");
+        child2_pid = fork(); /* Fork second child process */
+        if (child2_pid == -1) {
+            perror("fork error");
             exit(EXIT_FAILURE);
         }
 
-        if (cpid2 == 0) { // Child 2
-            // Redirect stdin from the read end of the pipe
-            dup2(pipefd[0], STDIN_FILENO);
-            close(pipefd[1]); // Close the write end, not needed here
-            close(pipefd[0]); // Close original read end after dup
-
-            // Execute "sort -r -n -k 5"
-            execlp("sort", "sort", "-r", "-n", "-k", "5", NULL);
-            // If execlp returns, it must have failed
-            perror("execlp");
+        if (child2_pid == 0) { /* In second child process */
+            dup2(pipe_fds[0], STDIN_FILENO); /* Redirect standard input to pipe's read end */
+            close(pipe_fds[1]); /* Close pipe's write end */
+            close(pipe_fds[0]); /* Close read end after duplication */
+            execlp("sort", "sort", "-r", "-n", "-k", "5", NULL); /* Execute 'sort -r -n -k 5' command */
+            perror("execlp error with sort");
             exit(EXIT_FAILURE);
         } else {
-            // Parent process
-            close(pipefd[0]); // Close the read end
-            close(pipefd[1]); // Close the write end
-
-            // Wait for both child processes to terminate
-            waitpid(cpid1, NULL, 0);
-            waitpid(cpid2, NULL, 0);
+            /* In parent process */
+            close(pipe_fds[0]); /* Close pipe's read end */
+            close(pipe_fds[1]); /* Close pipe's write end */
+            waitpid(child1_pid, NULL, 0); /* Wait for first child process to terminate */
+            waitpid(child2_pid, NULL, 0); /* Wait for second child process to terminate */
         }
     }
 
-    return 0;
+    return 0; /* Terminate parent process */
 }
