@@ -1,5 +1,7 @@
 #include <pthread.h>
-#include <cstdio>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 class Barrier {
 private:
@@ -43,16 +45,17 @@ public:
 // Thread function that demonstrates the use of the Barrier
 void* thread_fun(void* param) {
     Barrier* barrier = (Barrier*)param;
+    long thread_id = (long)pthread_self();
     
     // Simulate work before waiting at the barrier
-    printf("Thread %lu is doing some work before the barrier.\n", pthread_self());
-    fflush(stdout); // Flush the output buffer
-    
+    printf("Thread %ld is doing some work before the barrier.\n", thread_id);
+    fflush(stdout); // Ensure output is flushed immediately
+
     barrier->wait();
 
     // Simulate work after waiting at the barrier
-    printf("Thread %lu has passed the barrier and is doing more work.\n", pthread_self());
-    fflush(stdout); // Flush the output buffer
+    printf("Thread %ld has passed the barrier and is doing more work.\n", thread_id);
+    fflush(stdout); // Ensure output is flushed immediately
 
     pthread_exit(NULL);
 }
