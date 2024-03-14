@@ -1,17 +1,9 @@
 #include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <iostream>
 
 class Barrier {
-private:
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
-    int count;
-    int numThreads;
-
 public:
-    Barrier(int n) : count(0), numThreads(n) {
+    Barrier(int n) : threshold(n), count(0), generation(0) {
         pthread_mutex_init(&mutex, NULL);
         pthread_cond_init(&cond, NULL);
     }
@@ -24,69 +16,75 @@ public:
     void wait() {
         pthread_mutex_lock(&mutex);
 
-        // Increment the count of waiting threads
-        count++;
+        int gen = generation;
 
-        // If the count reaches the number of threads, signal all threads to continue
-        if(count >= numThreads) {
-            count = 0; // Reset the count for the next use of the barrier
+        if (++count == threshold) {
+            generation++;
+            count = 0;
             pthread_cond_broadcast(&cond);
         } else {
-            // Wait until the condition is signaled (i.e., the count reaches numThreads)
-            while(count < numThreads) {
+            while (gen == generation) {
                 pthread_cond_wait(&cond, &mutex);
             }
         }
 
         pthread_mutex_unlock(&mutex);
     }
+
+private:
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    int threshold;
+    int count;
+    int generation;
 };
 
-// Thread function that demonstrates the use of the Barrier
+// global barrier instance
+Barrier *barrier;
+
+// thread function
 void* thread_fun(void* param) {
-    Barrier* barrier = (Barrier*)param;
-    long thread_id = (long)pthread_self();
-    
-    // Simulate work before waiting at the barrier
-    printf("Thread %ld is doing some work before the barrier.\n", thread_id);
-    fflush(stdout); // Ensure output is flushed immediately
-
+    long thread_id = (long)param;
+    // simulate work before waiting at the barrier
+    std::cout << "Thread " << thread_id << " is doing some work before the barrier\n";
     barrier->wait();
-
-    // Simulate work after waiting at the barrier
-    printf("Thread %ld has passed the barrier and is doing more work.\n", thread_id);
-    fflush(stdout); // Ensure output is flushed immediately
-
+    // simulate work after waiting at the barrier
+    std::cout << "Thread " << thread_id << " is doing some work after the barrier\n";
     pthread_exit(NULL);
 }
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <number of threads>\n", argv[0]);
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <number_of_threads>\n";
         return 1;
     }
 
-    int numThreads = atoi(argv[1]);
-    if (numThreads <= 0) {
-        fprintf(stderr, "Number of threads must be a positive integer.\n");
+    int num_threads = atoi(argv[1]);
+    if (num_threads <= 0) {
+        std::cerr << "Number of threads must be a positive integer\n";
         return 1;
     }
 
-    Barrier barrier(numThreads);
-    pthread_t threads[numThreads];
+    pthread_t threads[num_threads];
+    barrier = new Barrier(num_threads);
 
-    // Create threads
-    for(int i = 0; i < numThreads; ++i) {
-        if (pthread_create(&threads[i], NULL, thread_fun, (void*)&barrier)) {
-            fprintf(stderr, "Failed to create thread.\n");
+    // create threads
+    for (long i = 0; i < num_threads; i++) {
+        if (pthread_create(&threads[i], NULL, thread_fun, (void*)i) != 0) {
+            std::cerr << "Failed to create thread " << i << "\n";
             return 1;
         }
     }
 
-    // Join threads
-    for(int i = 0; i < numThreads; ++i) {
-        pthread_join(threads[i], NULL);
+    // join threads
+    for (int i = 0; i < num_threads; i++) {
+        if (pthread_join(threads[i], NULL) != 0) {
+            std::cerr << "Failed to join thread " << i << "\n";
+            return 1;
+        }
     }
+
+    delete barrier;
 
     return 0;
 }
