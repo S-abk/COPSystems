@@ -1,5 +1,5 @@
 #include <pthread.h>
-#include <iostream>
+#include <cstdio>
 
 class Barrier {
 private:
@@ -45,25 +45,27 @@ void* thread_fun(void* param) {
     Barrier* barrier = (Barrier*)param;
     
     // Simulate work before waiting at the barrier
-    std::cout << "Thread " << pthread_self() << " is doing some work before the barrier.\n";
+    printf("Thread %lu is doing some work before the barrier.\n", pthread_self());
+    fflush(stdout); // Flush the output buffer
     
     barrier->wait();
 
     // Simulate work after waiting at the barrier
-    std::cout << "Thread " << pthread_self() << " has passed the barrier and is doing more work.\n";
+    printf("Thread %lu has passed the barrier and is doing more work.\n", pthread_self());
+    fflush(stdout); // Flush the output buffer
 
     pthread_exit(NULL);
 }
 
 int main(int argc, char** argv) {
     if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <number of threads>\n";
+        fprintf(stderr, "Usage: %s <number of threads>\n", argv[0]);
         return 1;
     }
 
     int numThreads = atoi(argv[1]);
     if (numThreads <= 0) {
-        std::cerr << "Number of threads must be a positive integer.\n";
+        fprintf(stderr, "Number of threads must be a positive integer.\n");
         return 1;
     }
 
@@ -73,7 +75,7 @@ int main(int argc, char** argv) {
     // Create threads
     for(int i = 0; i < numThreads; ++i) {
         if (pthread_create(&threads[i], NULL, thread_fun, (void*)&barrier)) {
-            std::cerr << "Failed to create thread.\n";
+            fprintf(stderr, "Failed to create thread.\n");
             return 1;
         }
     }
