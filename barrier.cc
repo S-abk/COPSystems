@@ -3,10 +3,10 @@
 
 class Barrier {
 private:
-    pthread_mutex_t mutex; // Mutex for locking the critical section
-    pthread_cond_t cond;   // Condition variable for blocking/waiting threads
-    int count;             // Number of waiting threads
-    int numThreads;        // Number of threads that must call wait before releasing
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    int count;
+    int numThreads;
 
 public:
     Barrier(int n) : count(0), numThreads(n) {
@@ -20,53 +20,66 @@ public:
     }
 
     void wait() {
-        pthread_mutex_lock(&mutex); // Enter critical section
+        pthread_mutex_lock(&mutex);
 
-        count++; // Increment the count of waiting threads
-        if (count == numThreads) {
-            // If N threads are waiting, wake up all threads
-            count = 0; // Reset the count for the next use
+        // Increment the count of waiting threads
+        count++;
+
+        // If the count reaches the number of threads, signal all threads to continue
+        if(count >= numThreads) {
+            count = 0; // Reset the count for the next use of the barrier
             pthread_cond_broadcast(&cond);
         } else {
-            // Wait on condition variable until the Nth thread arrives
-            while (count < numThreads) {
+            // Wait until the condition is signaled (i.e., the count reaches numThreads)
+            while(count < numThreads) {
                 pthread_cond_wait(&cond, &mutex);
             }
         }
 
-        pthread_mutex_unlock(&mutex); // Leave critical section
+        pthread_mutex_unlock(&mutex);
     }
 };
 
-// Example thread function
+// Thread function that demonstrates the use of the Barrier
 void* thread_fun(void* param) {
-    Barrier* barrier = static_cast<Barrier*>(param);
+    Barrier* barrier = (Barrier*)param;
+    
+    // Simulate work before waiting at the barrier
+    std::cout << "Thread " << pthread_self() << " is doing some work before the barrier.\n";
+    
+    barrier->wait();
 
-    // Do some work here...
+    // Simulate work after waiting at the barrier
+    std::cout << "Thread " << pthread_self() << " has passed the barrier and is doing more work.\n";
 
-    barrier->wait(); // Suspend thread until all have called wait
-
-    // Do more work after the barrier...
-
-    return NULL;
+    pthread_exit(NULL);
 }
 
-// Example usage
-int main() {
-    const int N = 10; // Number of threads to synchronize
-    pthread_t threads[N];
-    Barrier barrier(N);
+int main(int argc, char** argv) {
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " <number of threads>\n";
+        return 1;
+    }
+
+    int numThreads = atoi(argv[1]);
+    if (numThreads <= 0) {
+        std::cerr << "Number of threads must be a positive integer.\n";
+        return 1;
+    }
+
+    Barrier barrier(numThreads);
+    pthread_t threads[numThreads];
 
     // Create threads
-    for (int i = 0; i < N; ++i) {
-        if (pthread_create(&threads[i], NULL, thread_fun, &barrier)) {
-            std::cerr << "Failed to create thread " << i << std::endl;
+    for(int i = 0; i < numThreads; ++i) {
+        if (pthread_create(&threads[i], NULL, thread_fun, (void*)&barrier)) {
+            std::cerr << "Failed to create thread.\n";
             return 1;
         }
     }
 
     // Join threads
-    for (int i = 0; i < N; ++i) {
+    for(int i = 0; i < numThreads; ++i) {
         pthread_join(threads[i], NULL);
     }
 
